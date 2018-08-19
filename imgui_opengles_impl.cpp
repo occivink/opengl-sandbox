@@ -1,5 +1,5 @@
 #include "imgui/imgui.h"
-#include "imgui_impl.hpp"
+#include "imgui_opengles_impl.hpp"
 
 #include <cstdio>
 #include <GLES3/gl3.h>
@@ -100,7 +100,7 @@ void    ImGui_ImplOpenGL3_RenderDrawData(ImDrawData* draw_data)
     glUniform1i(g_AttribLocationTex, 0);
     glUniformMatrix4fv(g_AttribLocationProjMtx, 1, GL_FALSE, &ortho_projection[0][0]);
 #ifdef GL_SAMPLER_BINDING
-    //glBindSampler(0, 0); // We use combined texture/sampler state. Applications using GL 3.3 may set that otherwise.
+    glBindSampler(0, 0); // We use combined texture/sampler state. Applications using GL 3.3 may set that otherwise.
 #endif
     // Recreate the VAO every time 
     // (This is to easily allow multiple GL contexts. VAO are not shared among GL contexts, and we don't track creation/deletion of windows so we don't have an obvious key to use to cache them.)
@@ -158,7 +158,7 @@ void    ImGui_ImplOpenGL3_RenderDrawData(ImDrawData* draw_data)
     glUseProgram(last_program);
     glBindTexture(GL_TEXTURE_2D, last_texture);
 #ifdef GL_SAMPLER_BINDING
-    //glBindSampler(0, last_sampler);
+    glBindSampler(0, last_sampler);
 #endif
     glActiveTexture(last_active_texture);
     glBindVertexArray(last_vertex_array);
