@@ -77,7 +77,7 @@ void main()
 void Cube::render(const Camera& cam, const glm::mat4& other)
 {
     if (program == 0) {
-        if (!create_program(program, vert, frag) || program == 0)
+        if (!create_program(program, vert, frag) or program == 0)
             printf("Error creating program\n");
     }
 

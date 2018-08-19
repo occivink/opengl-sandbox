@@ -63,7 +63,7 @@ void draw_widget() {
     ImGui::SameLine();
     if (ImGui::BeginCombo("", "Filters"))
     {
-        static const std::vector filter_names = { "Fatal", "Error", "Warn", "Info", "Status", "Debug", "Trace" };
+        static const std::vector<const char*> filter_names = { "Fatal", "Error", "Warn", "Info", "Status", "Debug", "Trace" };
         bool modified = false;
         for (int i = 0; i < 7; i++) {
             bool selected = m_filter & (1 << i);
@@ -87,11 +87,11 @@ void draw_widget() {
     static bool showMs = false;
     ImGui::Checkbox("Show ms", &showMs);
 
-    ImGui::BeginChild("Log");
+    ImGui::BeginChild("Log", {0,0}, false, ImGuiWindowFlags_AlwaysVerticalScrollbar);
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0,0));
 
         ImGuiListClipper clipper(m_filtered.size());
-        bool show_hours = !m_log.empty() && m_log.back().timestamp > (60 * 60 * 1000);
+        bool show_hours = !m_log.empty() and m_log.back().timestamp > (60 * 60 * 1000);
         std::vector<int> range;
         while (clipper.Step()) {
             range.push_back(clipper.DisplayStart);

@@ -28,12 +28,6 @@ namespace {
     bool m_released_touch = false;
     bool m_openHovered = false;
 
-    EM_BOOL focusInOutCallback(int eventType, const EmscriptenVisibilityChangeEvent *visEvent, void *userData)
-    {
-        m_visible = !visEvent->hidden;
-        return false;
-    }
-
     EM_BOOL focusInOutCallback(int eventType, const EmscriptenFocusEvent *focusEvent, void *userData)
     {
         if (eventType == EMSCRIPTEN_EVENT_FOCUSOUT) {
@@ -81,7 +75,7 @@ namespace {
         }
 
 
-        IM_ASSERT(scancode >= 0 && scancode < IM_ARRAYSIZE(m_io->KeysDown));
+        IM_ASSERT(scancode >= 0 and scancode < IM_ARRAYSIZE(m_io->KeysDown));
         m_io->KeysDown[scancode] = (eventType == EMSCRIPTEN_EVENT_KEYDOWN);
         m_io->KeyShift = keyEvent->shiftKey;
         m_io->KeyCtrl =  keyEvent->ctrlKey;
@@ -141,7 +135,7 @@ namespace {
         return true;
     }
     EM_BOOL mouseClickCallback(int eventType, const EmscriptenMouseEvent *mouseEvent, void *userData) {
-        if (m_openHovered && mouseEvent->button == 0 && eventType == EMSCRIPTEN_EVENT_MOUSEDOWN) {
+        if (m_openHovered and mouseEvent->button == 0 and eventType == EMSCRIPTEN_EVENT_MOUSEDOWN) {
             emscripten_run_script("document.getElementById('fileElem').click();");
             // we don't get the corresponding mouse up so might as well abort
             return false;

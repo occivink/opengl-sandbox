@@ -1,6 +1,5 @@
 #include "shader_functions.hpp"
-
-#include <cstdio>
+#include "log.hpp"
 
 GLuint load_shader(GLenum type, const char *shaderSrc)
 {
@@ -22,7 +21,7 @@ GLuint load_shader(GLenum type, const char *shaderSrc)
         {
             char* infoLog = new char[infoLen];
             glGetShaderInfoLog(shader, infoLen, nullptr, infoLog);
-            printf("Error compiling shader:\n%s\n", infoLog);
+            Log::Error(std::string("Error compiling shader: ") + infoLog);
             delete[] infoLog;
         }
         glDeleteShader(shader);
@@ -58,7 +57,7 @@ bool create_program(GLuint& prog, const char* vert, const char* frag)
         {
             char* infoLog = new char[infoLen];
             glGetProgramInfoLog(prog, infoLen, nullptr, infoLog);
-            printf("Error linking program:\n%s\n", infoLog);
+            Log::Error(std::string("Error linking program: ") + infoLog);
             delete[] infoLog;
         }
         glDeleteProgram(prog);
