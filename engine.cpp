@@ -70,6 +70,7 @@ namespace {
         // hack: browsers only allow an input of type file to be triggered in user event callbacks
         if (keyEvent->ctrlKey and scancode == ScanCode::S_O and eventType == EMSCRIPTEN_EVENT_KEYDOWN) {
             m_io->KeyCtrl =  false;
+            Log::Info("Opening file...");
             emscripten_run_script("document.getElementById('fileElem').click();");
             return true;
         }
@@ -122,6 +123,12 @@ namespace {
     EM_BOOL touchStartEndCallback(int eventType, const EmscriptenTouchEvent *touchEvent, void *userData) {
         if (touchEvent->numTouches == 0)
             return true;
+        if (m_openHovered and eventType != EMSCRIPTEN_EVENT_TOUCHSTART) {
+            Log::Info("Opening file...");
+            emscripten_run_script("document.getElementById('fileElem').click();");
+            // we don't get the corresponding mouse up so might as well abort
+            return false;
+        }
         m_io->MouseDown[0] = (eventType == EMSCRIPTEN_EVENT_TOUCHSTART);
         m_io->MousePos = { (float)touchEvent->touches[0].canvasX, (float)touchEvent->touches[0].canvasY };
         if (eventType != EMSCRIPTEN_EVENT_TOUCHSTART)
@@ -136,6 +143,7 @@ namespace {
     }
     EM_BOOL mouseClickCallback(int eventType, const EmscriptenMouseEvent *mouseEvent, void *userData) {
         if (m_openHovered and mouseEvent->button == 0 and eventType == EMSCRIPTEN_EVENT_MOUSEDOWN) {
+            Log::Info("Opening file...");
             emscripten_run_script("document.getElementById('fileElem').click();");
             // we don't get the corresponding mouse up so might as well abort
             return false;

@@ -30,12 +30,14 @@ using namespace std::string_literals;
 namespace {
     Camera cam;
 
+    bool log_window = true;
+
     bool painting_mode = false;
     float label_opacity = 0.5f;
     float label_radius = 20.f;
     glm::vec3 label_color = { 0.2f, 0.4f, 0.6f };
 
-    static const std::vector<const char*> label_sizes = { "128", "256", "512", "1024", "2048", "4096" }; 
+    const std::vector<const char*> label_sizes = { "128", "256", "512", "1024", "2048", "4096" }; 
     int label_width = 2;  // just an index, the real value is (128 * (1 << index))
     int label_height = 2; // just an index, the real value is (128 * (1 << index))
 
@@ -43,6 +45,8 @@ namespace {
 
     std::unique_ptr<TexturedQuad> quad;
     std::unique_ptr<TexturedQuad> labels;
+
+    std::vector<unsigned char> input_png_data;
 
     #define PI 3.1415f
 
@@ -71,23 +75,27 @@ OnScopeEnd<T> on_scope_end(T t)
     return OnScopeEnd<T>{std::move(t)};
 }
 
-void destroy_fetch(emscripten_fetch_t* f) { emscripten_fetch_close(f); }
-std::unique_ptr<emscripten_fetch_t, decltype(&destroy_fetch)> last_image_req(nullptr, destroy_fetch);
+void loadCurrentInputImage(const std::vector<unsigned char>& image_dat)
+{
+    int w, h, channels;
+    unsigned char* mem = stbi_load_from_memory(input_png_data.data(), input_png_data.size(), &w, &h, &channels, 4);
+    if (!mem)
+        return;
+    quad.reset(new TexturedQuad(mem, w, h, 4));
+    stbi_image_free(mem);
+}
 
 void downloadSucceeded(emscripten_fetch_t *fetch)
 {
     Log::Info("download succeeded");
     if (fetch->numBytes > 0) {
-        last_image_req.reset(fetch);
         Log::Info("replacing current image");
-        int w, h, channels;
-        unsigned char* mem = stbi_load_from_memory(reinterpret_cast<const unsigned char*>(fetch->data), fetch->numBytes, &w, &h, &channels, 4);
-        if (!mem)
-            return;
-        quad.reset(new TexturedQuad(mem, w, h, 4));
-        stbi_image_free(mem);
+        input_png_data.resize(fetch->numBytes);
+        std::memcpy(input_png_data.data(), fetch->data, input_png_data.size());
+        emscripten_fetch_close(fetch);
+        loadCurrentInputImage(input_png_data);
     } else {
-        destroy_fetch(fetch);
+        emscripten_fetch_close(fetch);
     }
 }
 
@@ -112,7 +120,7 @@ void randomImage()
 
 void processCurrentImage()
 {
-    if (!last_image_req)
+    if (input_png_data.empty())
         return;
     Log::Info("processing current image");
     emscripten_fetch_attr_t attr;
@@ -121,34 +129,33 @@ void processCurrentImage()
     attr.attributes = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY;
     attr.onsuccess = downloadSucceeded;
     attr.onerror = downloadFailed;
-    int n = last_image_req->numBytes;
+    int n = input_png_data.size();
     Log::Info("sending " + std::to_string(n) + " bytes");
     auto bur = new char[n];
-    std::memcpy(bur, last_image_req->data, n);
+    std::memcpy(bur, input_png_data.data(), n);
     attr.requestDataSize = n;
     attr.requestData = bur;
     auto path = std::string("api/ProcessImage");
     emscripten_fetch(&attr, path.c_str());
 }
 
-extern "C" {
-
-    void loadImage() {
+extern "C" { // necessary to export to js
+    void loadImageFile() {
         auto fd = open("/file.txt", O_RDONLY);
         auto close_fd = on_scope_end([&]() { close(fd); });
         if (fd == -1) {
-            Log::Info("can't open");
+            Log::Info("can't open file");
             return;
         }
 
         struct stat st {};
         fstat(fd, &st);
         if (S_ISDIR(st.st_mode)) {
-            Log::Info("is a dir");
+            Log::Info("file is a dir?");
             return;
         }
         if (st.st_size == 0) {
-            Log::Info("empty");
+            Log::Info("file empty?");
             return;
         }
 
@@ -157,18 +164,13 @@ extern "C" {
             Log::Info("mmap failed");
             return;
         }
-        auto mun = on_scope_end([&]() { munmap((void*)data, st.st_size); });
+        int n = st.st_size;
+        input_png_data.resize(n);
+        memcpy(input_png_data.data(), data, n);
+        munmap((void*)data, st.st_size);
 
-        int w, h, channels;
-        unsigned char* mem = stbi_load_from_memory(reinterpret_cast<const unsigned char*>(data), st.st_size, &w, &h, &channels, 4);
-        if (!mem) {
-            Log::Info("not a png");
-            return;
-        }
-        quad.reset(new TexturedQuad(mem, w, h, 4));
-        stbi_image_free(mem);
+        loadCurrentInputImage(input_png_data);
     }
-
 }
 
 void refreshCamera() {
@@ -246,8 +248,7 @@ void loop_func()
     if (!Engine::show_gui())
         return;
 
-	ImVec2 pos;
-    static bool log_window = true;
+    ImVec2 pos;
     {
         ImGui::Begin("Main");
 
@@ -261,7 +262,6 @@ void loop_func()
         ImGui::Checkbox("Paint", &painting_mode);
         ImGui::Checkbox("Log window", &log_window);
         ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
-
 
         pos = ImGui::GetWindowPos();
         pos.x += ImGui::GetWindowWidth() + 10;
