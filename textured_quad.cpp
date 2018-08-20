@@ -64,8 +64,8 @@ TexturedQuad::TexturedQuad(const unsigned char* data, int w, int h, int c, bool 
     glGenTextures(1, &m_texture);
 
     glBindTexture(GL_TEXTURE_2D, m_texture);
-
-    glTexImage2D(GL_TEXTURE_2D, 0, format, w, h, 0,  format, GL_UNSIGNED_BYTE, data);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexImage2D(GL_TEXTURE_2D, 0, format, w, h, 0, format, GL_UNSIGNED_BYTE, data);
 
     if (nearest) {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
@@ -173,7 +173,7 @@ uniform vec2 segmentA;
 uniform vec2 segmentB;
 uniform float radius;
 uniform float blob_ratio;
-uniform vec4 labelColor;
+uniform float label_color;
 void main()
 {
     vec2 pos = vec2(gl_FragCoord.x * blob_ratio, gl_FragCoord.y); // put pos in original image coordinates
@@ -181,14 +181,14 @@ void main()
     if (segmentLength == 0.0) {
         if (dot(pos - segmentA, pos - segmentA) > radius * radius)
             discard;
-        Out_Color = labelColor;
+        Out_Color = vec4(label_color, 0, 0, 1);
         return;
     }
     float t = clamp(dot(pos -segmentA, segmentB - segmentA) / segmentLength, 0.0, 1.0);
     vec2 projection = segmentA + t * (segmentB - segmentA);
     if (dot(pos -projection, pos - projection) > radius * radius)
         discard;
-    Out_Color = labelColor;
+    Out_Color = vec4(label_color, 0, 0, 1);
 })FRAG";
 
     GLuint segmentAID;
@@ -210,7 +210,7 @@ void main()
         segmentBID = glGetUniformLocation(program, "segmentB");
         RadiusID = glGetUniformLocation(program, "radius");
         BlobRatioID = glGetUniformLocation(program, "blob_ratio");
-        LabelColorID = glGetUniformLocation(program, "labelColor");
+        LabelColorID = glGetUniformLocation(program, "label_color");
 
         glGenFramebuffers(1, &frameBuffer);
         ok = true;
@@ -241,7 +241,7 @@ bool TexturedQuad::unproject(const Camera& cam,
 
 void TexturedQuad::paint(glm::vec2 from,
                          glm::vec2 to,
-                         const glm::vec3& color,
+                         int color,
                          float radius,
                          float blob_ratio)
 {
@@ -274,11 +274,19 @@ void TexturedQuad::paint(glm::vec2 from,
     glUniform2fv(segmentBID, 1, &from[0]);
     glUniform1fv(RadiusID, 1, &radius);
     glUniform1fv(BlobRatioID, 1, &blob_ratio);
-    glUniform4fv(LabelColorID, 1, &color[0]);
+    float color_floated = (float)color / 255.0f;
+    glUniform1fv(LabelColorID, 1, &color_floated);
 
     glEnableVertexAttribArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, Buffers::verticesBuffer);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
+
+	int i = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    if (i == GL_FRAMEBUFFER_UNDEFINED) { Log::Error("GL_FRAMEBUFFER_UNDEFINED"); }
+    if (i == GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT) { Log::Error("GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT"); }
+    if (i == GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT) { Log::Error("GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT"); }
+    if (i == GL_FRAMEBUFFER_UNSUPPORTED) { Log::Error("GL_FRAMEBUFFER_UNSUPPORTED"); }
+    if (i == GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE) { Log::Error("GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE"); }
 
     glDrawArrays(GL_TRIANGLES, 0, 6);
 
@@ -286,7 +294,7 @@ void TexturedQuad::paint(glm::vec2 from,
     glViewport(0, 0, Engine::width(), Engine::height());
 }
 
-namespace TextureMixerShader {
+namespace TextureWithLabelsShader {
     bool okay = false;
     GLuint program;
 
@@ -314,12 +322,13 @@ void main()
 {
     vec4 sample1 = texture(tex1Sampler, uv);
     vec4 sample2 = texture(tex2Sampler, uv);
-    if (sample1.w == 0.0)
-        Out_Color = sample2;
-    else if (sample2.w == 0.0)
-        Out_Color = sample1;
+    int index = int(round(clamp(255.0f * sample2.r, 0.0f, 254.0f)));
+    if (index == 1)
+        Out_Color = mix(sample1, vec4(0,1,0,1), factor);
+    else if (index == 2)
+        Out_Color = mix(sample1, vec4(1,0,0,1), factor);
     else
-        Out_Color = mix(texture(tex1Sampler, uv), texture(tex2Sampler, uv), factor);
+        Out_Color = sample1;
 })FRAG";
 
     GLuint MvpID;
@@ -349,7 +358,7 @@ void TexturedQuad::renderWithLabels(const Camera& cam,
                                    float label_opacity,
                                    const glm::mat4* model)
 {
-    using namespace TextureMixerShader;
+    using namespace TextureWithLabelsShader;
     init();
 
     auto mvp = model ? cam.projection_view() * *model : cam.projection_view();
@@ -377,4 +386,39 @@ void TexturedQuad::renderWithLabels(const Camera& cam,
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
 
     glDrawArrays(GL_TRIANGLES, 0, 6);
+}
+
+bool TexturedQuad::exportPixels(std::vector<unsigned char>& pixels)
+{
+    GLuint fb;
+    glGenFramebuffers(1, &fb);
+    while(glGetError() != 0) { Log::Error("waaa1"); }
+    glBindFramebuffer(GL_FRAMEBUFFER, fb);
+    while(glGetError() != 0) { Log::Error("waaa2"); }
+
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_texture, 0);
+    while(glGetError() != 0) { Log::Error("waaa3"); }
+
+    auto status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    if (status != GL_FRAMEBUFFER_COMPLETE)
+        printf("failed to make complete framebuffer object %x", status);
+
+    glViewport(0, 0, m_width, m_height);
+    while(glGetError() != 0) { Log::Error("waaa4"); }
+
+    GLenum format = 0;
+    switch (m_channels) {
+        case 1: format = GL_RED; break;
+        case 2: format = GL_RG; break;
+        case 3: format = GL_RGB; break;
+        case 4: format = GL_RGBA; break;
+        default: Log::Error("Invalid channels number"); break;
+    }
+    pixels.resize(m_width * m_height * m_channels);
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    glReadPixels(0, 0, m_width, m_height, format, GL_UNSIGNED_BYTE, pixels.data());
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, Engine::width(), Engine::height());
+    return true;
 }

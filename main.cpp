@@ -24,6 +24,8 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
 
 using namespace std::string_literals;
 
@@ -35,24 +37,24 @@ namespace {
     bool painting_mode = false;
     float label_opacity = 0.5f;
     float label_radius = 20.f;
-    glm::vec3 label_color = { 0.2f, 0.4f, 0.6f };
+    int label_color = 1;
 
-    const std::vector<const char*> label_sizes = { "128", "256", "512", "1024", "2048", "4096" }; 
-    int label_width = 2;  // just an index, the real value is (128 * (1 << index))
-    int label_height = 2; // just an index, the real value is (128 * (1 << index))
+    const std::vector<const char*> label_sizes = { "128", "256", "512", "1024", "2048", "4096" };
+    int label_width = 0;  // just an index, the real value is (128 * (1 << index))
+    int label_height = 0; // just an index, the real value is (128 * (1 << index))
 
     std::optional<glm::vec2> previous_paint_location;
 
     std::unique_ptr<TexturedQuad> quad;
     std::unique_ptr<TexturedQuad> labels;
 
-    std::vector<unsigned char> input_png_data;
+    std::vector<unsigned char> current_image_data;
 
     #define PI 3.1415f
 
     float theta = 0.f;
     float phi = PI / 2;
-    float distance = 1.f;
+    float distance = 2.f;
 }
 
 
@@ -75,68 +77,115 @@ OnScopeEnd<T> on_scope_end(T t)
     return OnScopeEnd<T>{std::move(t)};
 }
 
-void loadCurrentInputImage(const std::vector<unsigned char>& image_dat)
-{
-    int w, h, channels;
-    unsigned char* mem = stbi_load_from_memory(input_png_data.data(), input_png_data.size(), &w, &h, &channels, 4);
-    if (!mem)
-        return;
-    quad.reset(new TexturedQuad(mem, w, h, 4));
-    stbi_image_free(mem);
+void stbi_write_callback(void *context, void *data, int size) {
+    auto& png = *reinterpret_cast<std::vector<unsigned char>*>(context);
+    auto old_size = png.size();
+    png.resize(old_size + size);
+    std::memcpy(&png[old_size], data, size);
+}
+bool pixels_to_png(const std::vector<unsigned char>& pixels, int width, int height, int channels, std::vector<unsigned char>& png) {
+    int res = stbi_write_png_to_func(stbi_write_callback, &png, width, height, channels, pixels.data(), width * channels);
+    return res != 0;
 }
 
-void downloadSucceeded(emscripten_fetch_t *fetch)
+void resetLabels() {
+    labels.reset(new TexturedQuad(128 * (1 << label_width), 128 * (1 << label_height), 3, true));
+}
+
+bool loadImageToQuad(const unsigned char* image_data, int size)
 {
-    Log::Info("download succeeded");
-    if (fetch->numBytes > 0) {
-        Log::Info("replacing current image");
-        input_png_data.resize(fetch->numBytes);
-        std::memcpy(input_png_data.data(), fetch->data, input_png_data.size());
-        emscripten_fetch_close(fetch);
-        loadCurrentInputImage(input_png_data);
-    } else {
-        emscripten_fetch_close(fetch);
+    int w, h, channels;
+    unsigned char* mem = stbi_load_from_memory(image_data, size, &w, &h, &channels, 4);
+    if (!mem) {
+        Log::Error("failed to load image");
+        return false;
+    }
+    quad.reset(new TexturedQuad(mem, w, h, 4));
+    stbi_image_free(mem);
+    return true;
+}
+
+void fetchImageSuccess(emscripten_fetch_t *fetch)
+{
+    auto c = on_scope_end([&]{ emscripten_fetch_close(fetch); });
+    if (fetch->numBytes == 0) {
+        Log::Error("expected data, but received none");
+        return;
+    }
+    Log::Info("trying to load received data (" + std::to_string(fetch->numBytes/1000) + "kb) as image");
+    if (loadImageToQuad(reinterpret_cast<const unsigned char*>(fetch->data), fetch->numBytes)) {
+        current_image_data.resize(fetch->numBytes);
+        std::memcpy(current_image_data.data(), fetch->data, current_image_data.size());
     }
 }
 
-void downloadFailed(emscripten_fetch_t *fetch)
+void getProcessingResultSuccess(emscripten_fetch_t *fetch)
 {
-    Log::Info("download failed");
+    auto c = on_scope_end([&]{ emscripten_fetch_close(fetch); });
+    if (fetch->numBytes == 0) {
+        Log::Error("expected data, but received none");
+        return;
+    }
+    Log::Info("trying to load received data (" + std::to_string(fetch->numBytes/1000) + "kb) as image");
+    if (loadImageToQuad(reinterpret_cast<const unsigned char*>(fetch->data), fetch->numBytes)) {
+        current_image_data.resize(fetch->numBytes);
+        std::memcpy(current_image_data.data(), fetch->data, current_image_data.size());
+        resetLabels();
+    }
+}
+
+void genericSuccess(emscripten_fetch_t *fetch)
+{
+    Log::Info("api call succeeded");
     emscripten_fetch_close(fetch);
 }
 
-void randomImage()
+void genericFail(emscripten_fetch_t *fetch)
+{
+    Log::Error("api call failed");
+    emscripten_fetch_close(fetch);
+}
+
+void sendSerializedImage(const char* apiPath, const std::vector<unsigned char>& png_data)
+{
+    Log::Info("sending image to "s + apiPath);
+    emscripten_fetch_attr_t attr;
+    emscripten_fetch_attr_init(&attr);
+    strcpy(attr.requestMethod, "POST");
+    attr.attributes = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY;
+    attr.onsuccess = genericSuccess;
+    attr.onerror = genericFail;
+    int n = png_data.size();
+    auto tmp = new char[n];
+    std::memcpy(tmp, png_data.data(), n);
+    attr.requestDataSize = n;
+    attr.requestData = tmp;
+    auto s = "api/"s + apiPath;
+    emscripten_fetch(&attr, s.c_str());
+}
+
+void getProcessingResult()
+{
+    Log::Info("waiting for processing result");
+    emscripten_fetch_attr_t attr;
+    emscripten_fetch_attr_init(&attr);
+    strcpy(attr.requestMethod, "GET");
+    attr.attributes = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY;
+    attr.onsuccess = getProcessingResultSuccess;
+    attr.onerror = genericFail;
+    emscripten_fetch(&attr, "api/ProcessImages");
+}
+
+void fetchRandomImage()
 {
     Log::Info("fetching random image");
     emscripten_fetch_attr_t attr;
     emscripten_fetch_attr_init(&attr);
     strcpy(attr.requestMethod, "GET");
     attr.attributes = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY;
-    attr.onsuccess = downloadSucceeded;
-    attr.onerror = downloadFailed;
-    auto path = std::string("api/RandomImage");
-    emscripten_fetch(&attr, path.c_str());
-}
-
-void processCurrentImage()
-{
-    if (input_png_data.empty())
-        return;
-    Log::Info("processing current image");
-    emscripten_fetch_attr_t attr;
-    emscripten_fetch_attr_init(&attr);
-    strcpy(attr.requestMethod, "POST");
-    attr.attributes = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY;
-    attr.onsuccess = downloadSucceeded;
-    attr.onerror = downloadFailed;
-    int n = input_png_data.size();
-    Log::Info("sending " + std::to_string(n) + " bytes");
-    auto bur = new char[n];
-    std::memcpy(bur, input_png_data.data(), n);
-    attr.requestDataSize = n;
-    attr.requestData = bur;
-    auto path = std::string("api/ProcessImage");
-    emscripten_fetch(&attr, path.c_str());
+    attr.onsuccess = fetchImageSuccess;
+    attr.onerror = genericFail;
+    emscripten_fetch(&attr, "api/RandomImage");
 }
 
 extern "C" { // necessary to export to js
@@ -147,8 +196,7 @@ extern "C" { // necessary to export to js
             Log::Info("can't open file");
             return;
         }
-
-        struct stat st {};
+        struct stat st;
         fstat(fd, &st);
         if (S_ISDIR(st.st_mode)) {
             Log::Info("file is a dir?");
@@ -164,12 +212,12 @@ extern "C" { // necessary to export to js
             Log::Info("mmap failed");
             return;
         }
+        auto c = on_scope_end([&]{ munmap((void*)data, st.st_size); });
         int n = st.st_size;
-        input_png_data.resize(n);
-        memcpy(input_png_data.data(), data, n);
-        munmap((void*)data, st.st_size);
-
-        loadCurrentInputImage(input_png_data);
+        if (loadImageToQuad(data, n)) {
+            current_image_data.resize(n);
+            memcpy(current_image_data.data(), data, n);
+        }
     }
 }
 
@@ -198,7 +246,7 @@ void loop_func()
         if (m_io.MouseDown[0]) {
             if (painting_mode)
                 paint = true;
-            else 
+            else
                 rotate_camera = (m_io.MouseDelta.x != 0.f or m_io.MouseDelta.y != 0.f);
         }
         zoom_camera = m_io.MouseWheel != 0.f;
@@ -230,7 +278,7 @@ void loop_func()
             if (quad->unproject(cam, nullptr, cursor, outPicked)) {
                 float radius_adjusted = label_radius * labels->height() / quad->height();
                 if (previous_paint_location)
-                    labels->paint(*previous_paint_location, outPicked, label_color, radius_adjusted, quad->ratio());
+                    labels->paint(outPicked, *previous_paint_location, label_color, radius_adjusted, quad->ratio());
                 else
                     labels->paint(outPicked, outPicked, label_color, radius_adjusted, quad->ratio());
                 previous_paint_location = outPicked;
@@ -250,18 +298,40 @@ void loop_func()
 
     ImVec2 pos;
     {
+        ImGui::SetNextWindowPos({10,10}, ImGuiCond_FirstUseEver);
         ImGui::Begin("Main");
 
         // see engine.hpp for why this thing need special handling
         ImGui::Button("Open image...");
         Engine::setOpenHovered(ImGui::IsItemHovered());
-        if (ImGui::Button("Request random image"))
-            randomImage();
-        if (ImGui::Button("Process"))
-            processCurrentImage();
         ImGui::Checkbox("Paint", &painting_mode);
+
+        if (ImGui::Button("Request random image")) {
+            fetchRandomImage();
+        }
+        if (ImGui::Button("Send Image") && quad) {
+            sendSerializedImage("SendCurrentImage", current_image_data);
+        }
+        if (ImGui::Button("Send Labels") && labels) {
+            std::vector<unsigned char> pixels;
+            if (labels->exportPixels(pixels)) {
+                int culled_size = pixels.size() / 3;
+                for (int i = 0; i < culled_size; ++i)
+                    pixels[i] = pixels[i * 3];
+                pixels.resize(culled_size);
+                std::vector<unsigned char> asPng;
+                if (pixels_to_png(pixels, labels->width(), labels->height(), 1, asPng)) {
+                    pixels.clear();
+                    sendSerializedImage("SendLabelImage", asPng);
+                }
+            }
+        }
+        if (ImGui::Button("Process")) {
+            getProcessingResult();
+        }
+
         ImGui::Checkbox("Log window", &log_window);
-        ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+        ImGui::Text("%.2f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
 
         pos = ImGui::GetWindowPos();
         pos.x += ImGui::GetWindowWidth() + 10;
@@ -293,9 +363,9 @@ void loop_func()
         ImGui::PopItemWidth();
         ImGui::SliderFloat("Opacity", &label_opacity, 0.0f, 1.0f, "%.2f");
         ImGui::SliderFloat("Radius", &label_radius, 1.0f, 100.0f, "%.2f");
-        ImGui::ColorEdit3("Color", &label_color[0]);
+        ImGui::SliderInt("Color", &label_color, 0, 2);
         if (ImGui::Button("Clear"))
-            labels.reset(new TexturedQuad(128 * (1 << label_width), 128 * (1 << label_height), 4, true));
+            resetLabels();
 
         ImGui::End();
     }
@@ -306,9 +376,9 @@ void loop_func()
 
 int main(int argc, char** argv)
 {
-    randomImage();
+    fetchRandomImage();
     Engine::init(loop_func);
-    labels.reset(new TexturedQuad(128 * (1 << label_width), 128 * (1 << label_height), 4, true));
+    resetLabels();
     refreshCamera();
     Engine::start();
     Engine::fini();

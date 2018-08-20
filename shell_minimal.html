@@ -60,7 +60,7 @@
       var reader = new FileReader();
       reader.onload = function() {
          FS.writeFile('/file.txt', new Uint8Array(this.result));
-         Module.ccall('loadImage');
+         Module.ccall('loadImageFile');
       }
       reader.readAsArrayBuffer(files[0]);
     }

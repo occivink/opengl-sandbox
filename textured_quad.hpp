@@ -2,6 +2,7 @@
 
 #include <mat4x4.hpp>
 #include <optional>
+#include <vector>
 
 #include <GLES3/gl3.h>
 #include "camera.hpp"
@@ -22,7 +23,7 @@ public:
 
     void paint(glm::vec2 from, // in [-1, 1] texture coordinates
                glm::vec2 to,   // same
-               const glm::vec3& color,
+               int color,
                float radius,
                float blob_ratio);
 
@@ -30,6 +31,8 @@ public:
                           const TexturedQuad& labels,
                           float label_opacity,
                           const glm::mat4* model = nullptr);
+    
+    bool exportPixels(std::vector<unsigned char>& pixels);
 
     int width() const { return m_width; }
     int height() const { return m_height; }

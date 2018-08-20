@@ -223,9 +223,16 @@ void init(std::function<void()> func)
     m_glContext = createContext();
     makeCurrent(m_glContext);
 
+
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     m_io = &ImGui::GetIO();
+
+    double scale = emscripten_get_device_pixel_ratio();
+    if (scale > 1.5f) {
+        m_io->FontGlobalScale = scale;
+    }
+    ImGui::GetStyle().ScaleAllSizes(scale);
 
     ImGui_ImplOpenGL3_Init();
     ImGui::StyleColorsDark();
@@ -241,7 +248,7 @@ void init(std::function<void()> func)
     // - The fonts will be rasterized at a given size (w/ oversampling) and stored into a texture when calling ImFontAtlas::Build()/GetTexDataAsXXXX(), which ImGui_ImplXXXX_NewFrame below will call.
     // - Read 'misc/fonts/README.txt' for more instructions and details.
     // - Remember that in C/C++ if you want to include a backslash \ in a string literal you need to write a double backslash \\ !
-    //io.Fonts->AddFontDefault();
+    //m_io->Fonts->AddFont(fontConfig);
     //io.Fonts->AddFontFromFileTTF("../../misc/fonts/Roboto-Medium.ttf", 16.0f);
     //io.Fonts->AddFontFromFileTTF("../../misc/fonts/Cousine-Regular.ttf", 15.0f);
     //io.Fonts->AddFontFromFileTTF("../../misc/fonts/DroidSans.ttf", 16.0f);

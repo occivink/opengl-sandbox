@@ -21,7 +21,7 @@ CPPFLAGS +=
 LDFLAGS += -s FULL_ES3=1 --shell-file shell_minimal.html
 
 CXX = em++
-CXXFLAGS += -pedantic -std=c++17 -g -Wall -Wno-reorder -Wno-sign-compare -Wno-address -I /usr/include/glm -s USE_WEBGL2=1 -s FETCH=1 -s WASM=0 -s ALLOW_MEMORY_GROWTH=1 -s EXPORTED_FUNCTIONS='["_main", "_loadImage"]' -s EXTRA_EXPORTED_RUNTIME_METHODS='["ccall", "cwrap"]'
+CXXFLAGS += -pedantic -std=c++17 -g -Wall -Wno-reorder -Wno-sign-compare -Wno-address -I /usr/include/glm -s USE_WEBGL2=1 -s FETCH=1 -s WASM=0 -s ALLOW_MEMORY_GROWTH=1 -s EXPORTED_FUNCTIONS='["_main", "_loadImageFile"]' -s EXTRA_EXPORTED_RUNTIME_METHODS='["ccall", "cwrap"]'
 
 
 all : proj
