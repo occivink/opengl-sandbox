@@ -1,49 +1,39 @@
 #include "textured_quad.hpp"
 #include "log.hpp"
 #include "engine.hpp"
+#include "utils.hpp"
 #include "shader_functions.hpp"
-
-#define GLM_ENABLE_EXPERIMENTAL
-#include <gtx/string_cast.hpp>
-#include <gtx/intersect.hpp>
 
 #include <vector>
 #include <cstdio>
 
-namespace Buffers {
+namespace { namespace Buffers {
     bool ok = false;
     GLuint verticesBuffer;
-    GLuint uvsBuffer;
 
     void init() {
         if (ok)
             return;
-        const std::vector<glm::vec3> verts = {
-            glm::vec3(-1.f, -1.f, 0.f),
-            glm::vec3(-1.f,  1.f, 0.f),
-            glm::vec3( 1.f,  1.f, 0.f),
-            glm::vec3(-1.f, -1.f, 0.f),
-            glm::vec3( 1.f, -1.f, 0.f),
-            glm::vec3( 1.f,  1.f, 0.f),
-        };
+
+        const auto verts = make_array<float>(
+            -1.f, -1.f,  0.f,
+            -1.f,  1.f,  0.f,
+             1.f,  1.f,  0.f,
+            -1.f, -1.f,  0.f,
+             1.f, -1.f,  0.f,
+             1.f,  1.f,  0.f
+        );
         glGenBuffers(1, &verticesBuffer);
         glBindBuffer(GL_ARRAY_BUFFER, verticesBuffer);
-        glBufferData(GL_ARRAY_BUFFER, verts.size() * 3 * sizeof(float), &verts[0][0], GL_STATIC_DRAW);
-
-        const std::vector<glm::vec2> UVs = {
-            glm::vec2(0.0f, 1.0f),
-            glm::vec2(0.0f, 0.0f),
-            glm::vec2(1.0f, 0.0f),
-            glm::vec2(0.0f, 1.0f),
-            glm::vec2(1.0f, 1.0f),
-            glm::vec2(1.0f, 0.0f),
-        };
-        glGenBuffers(1, &uvsBuffer);
-        glBindBuffer(GL_ARRAY_BUFFER, uvsBuffer);
-        glBufferData(GL_ARRAY_BUFFER, UVs.size() * 2 * sizeof(float), &UVs[0][0], GL_STATIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, verts.size() * sizeof(float), verts.data(), GL_STATIC_DRAW);
 
         ok = true;
     }
+}}
+
+GLuint TexturedQuad::verticesBuffer() {
+    Buffers::init();
+    return Buffers::verticesBuffer;
 }
 
 TexturedQuad::TexturedQuad(const unsigned char* data, int w, int h, int c, bool nearest)
@@ -84,19 +74,18 @@ TexturedQuad::~TexturedQuad() {
     glDeleteTextures(1, &m_texture);
 }
 
-namespace DrawShader {
+namespace { namespace DrawShader {
     GLuint program = 0;
 
     const char* vert = R"VERT(#version 300 es
 precision mediump float;
 layout (location = 0) in vec3 Position;
-layout(location = 1) in vec2 vertexUV;
 uniform float ratio;
 uniform mat4 mvp;
 out vec2 uv;
 void main()
 {
-    uv = vertexUV;
+    uv = 0.5 * (Position.xy + vec2(1,1));
     gl_Position = mvp * vec4(ratio * Position.x, Position.y, Position.z, 1);
 })VERT";
 
@@ -125,9 +114,9 @@ void main()
             RatioID = glGetUniformLocation(program, "ratio");
         }
     }
-}
+}}
 
-void TexturedQuad::render(const Camera& cam, const glm::mat4* model)
+void TexturedQuad::render(const Camera& cam, const glm::mat4* model) const
 {
     using namespace DrawShader;
     DrawShader::init();
@@ -147,14 +136,10 @@ void TexturedQuad::render(const Camera& cam, const glm::mat4* model)
     glBindBuffer(GL_ARRAY_BUFFER, Buffers::verticesBuffer);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
 
-    glEnableVertexAttribArray(1);
-    glBindBuffer(GL_ARRAY_BUFFER, Buffers::uvsBuffer);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
-
     glDrawArrays(GL_TRIANGLES, 0, 6);
 }
 
-namespace PaintShader {
+namespace { namespace PaintShader {
     bool ok = false;
 
     GLuint program;
@@ -191,8 +176,8 @@ void main()
     Out_Color = vec4(label_color, 0, 0, 1);
 })FRAG";
 
-    GLuint segmentAID;
-    GLuint segmentBID;
+    GLuint SegmentAID;
+    GLuint SegmentBID;
     GLuint RadiusID;
     GLuint BlobRatioID;
     GLuint LabelColorID;
@@ -206,8 +191,8 @@ void main()
             Log::Error("Error creating program");
             return;
         }
-        segmentAID = glGetUniformLocation(program, "segmentA");
-        segmentBID = glGetUniformLocation(program, "segmentB");
+        SegmentAID = glGetUniformLocation(program, "segmentA");
+        SegmentBID = glGetUniformLocation(program, "segmentB");
         RadiusID = glGetUniformLocation(program, "radius");
         BlobRatioID = glGetUniformLocation(program, "blob_ratio");
         LabelColorID = glGetUniformLocation(program, "label_color");
@@ -215,12 +200,12 @@ void main()
         glGenFramebuffers(1, &frameBuffer);
         ok = true;
     }
-}
+}}
 
 bool TexturedQuad::unproject(const Camera& cam,
                              const glm::mat4* model,
                              const glm::vec2& cursor,
-                             glm::vec2& outPicked)
+                             glm::vec2& outPicked) const
 {
     auto mvpInv = glm::inverse(model ? cam.projection_view() * *model : cam.projection_view());
     glm::vec4 close = mvpInv * glm::vec4(cursor, -1.0f, 1.0f);
@@ -233,7 +218,7 @@ bool TexturedQuad::unproject(const Camera& cam,
     if (std::abs(d) > std::numeric_limits<float>::epsilon())
     {
         auto intersection = close + glm::dot(glm::vec4{0.f,0.f,0.f,1.f} - close, plane_normal) / d * dirNormalized;
-        outPicked = { intersection.x / m_ratio, intersection.y };
+        outPicked = { intersection.x , intersection.y };
         return true;
     }
     return false;
@@ -246,11 +231,7 @@ void TexturedQuad::paint(glm::vec2 from,
                          float blob_ratio)
 {
     blob_ratio /= m_ratio;
-    from = (from + 1.0f) / 2.0f;
-    from.y = 1.0f - from.y; // gl_FragCoord's origin is lower-left for some reason
-    from *= glm::vec2{blob_ratio * m_width, m_height};
-    to = (to + 1.0f) / 2.0f;
-    to.y = 1.0f - to.y;
+    from *= glm::vec2{ blob_ratio * m_width, m_height };
     to *= glm::vec2{ blob_ratio * m_width, m_height };
     if (   (from.x + radius < 0.0                  and to.x + radius < 0.0)
         or (from.x - radius > blob_ratio * m_width and to.x - radius > blob_ratio * m_width)
@@ -270,8 +251,8 @@ void TexturedQuad::paint(glm::vec2 from,
     glViewport(0, 0, m_width, m_height);
     glUseProgram(program);
 
-    glUniform2fv(segmentAID, 1, &to[0]);
-    glUniform2fv(segmentBID, 1, &from[0]);
+    glUniform2fv(SegmentAID, 1, &to[0]);
+    glUniform2fv(SegmentBID, 1, &from[0]);
     glUniform1fv(RadiusID, 1, &radius);
     glUniform1fv(BlobRatioID, 1, &blob_ratio);
     float color_floated = (float)color / 255.0f;
@@ -281,33 +262,25 @@ void TexturedQuad::paint(glm::vec2 from,
     glBindBuffer(GL_ARRAY_BUFFER, Buffers::verticesBuffer);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
 
-	int i = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-    if (i == GL_FRAMEBUFFER_UNDEFINED) { Log::Error("GL_FRAMEBUFFER_UNDEFINED"); }
-    if (i == GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT) { Log::Error("GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT"); }
-    if (i == GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT) { Log::Error("GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT"); }
-    if (i == GL_FRAMEBUFFER_UNSUPPORTED) { Log::Error("GL_FRAMEBUFFER_UNSUPPORTED"); }
-    if (i == GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE) { Log::Error("GL_FRAMEBUFFER_INCOMPLETE_MULTISAMPLE"); }
-
     glDrawArrays(GL_TRIANGLES, 0, 6);
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glViewport(0, 0, Engine::width(), Engine::height());
+    glViewport(0, 0, Engine::input().width, Engine::input().height);
 }
 
-namespace TextureWithLabelsShader {
+namespace { namespace TextureWithLabelsShader {
     bool okay = false;
     GLuint program;
 
     const char* vert = R"VERT(#version 300 es
 precision mediump float;
 layout (location = 0) in vec3 Position;
-layout(location = 1) in vec2 vertexUV;
 uniform float ratio;
 uniform mat4 mvp;
 out vec2 uv;
 void main()
 {
-    uv = vertexUV;
+    uv = 0.5 * (Position.xy + vec2(1,1));
     gl_Position = mvp * vec4(ratio * Position.x, Position.y, Position.z, 1);
 })VERT";
 
@@ -351,12 +324,12 @@ void main()
         Tex2SamplerID = glGetUniformLocation(program, "tex2Sampler");
         okay = true;
     }
-}
+}}
 
 void TexturedQuad::renderWithLabels(const Camera& cam,
                                    const TexturedQuad& labels,
                                    float label_opacity,
-                                   const glm::mat4* model)
+                                   const glm::mat4* model) const
 {
     using namespace TextureWithLabelsShader;
     init();
@@ -381,30 +354,18 @@ void TexturedQuad::renderWithLabels(const Camera& cam,
     glBindBuffer(GL_ARRAY_BUFFER, Buffers::verticesBuffer);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, (void*)0);
 
-    glEnableVertexAttribArray(1);
-    glBindBuffer(GL_ARRAY_BUFFER, Buffers::uvsBuffer);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 0, (void*)0);
-
     glDrawArrays(GL_TRIANGLES, 0, 6);
 }
 
-bool TexturedQuad::exportPixels(std::vector<unsigned char>& pixels)
+bool TexturedQuad::exportPixels(std::vector<unsigned char>& pixels) const
 {
     GLuint fb;
     glGenFramebuffers(1, &fb);
-    while(glGetError() != 0) { Log::Error("waaa1"); }
     glBindFramebuffer(GL_FRAMEBUFFER, fb);
-    while(glGetError() != 0) { Log::Error("waaa2"); }
 
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_texture, 0);
-    while(glGetError() != 0) { Log::Error("waaa3"); }
-
-    auto status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-    if (status != GL_FRAMEBUFFER_COMPLETE)
-        printf("failed to make complete framebuffer object %x", status);
 
     glViewport(0, 0, m_width, m_height);
-    while(glGetError() != 0) { Log::Error("waaa4"); }
 
     GLenum format = 0;
     switch (m_channels) {
@@ -418,7 +379,8 @@ bool TexturedQuad::exportPixels(std::vector<unsigned char>& pixels)
     glPixelStorei(GL_PACK_ALIGNMENT, 1);
     glReadPixels(0, 0, m_width, m_height, format, GL_UNSIGNED_BYTE, pixels.data());
 
+    glDeleteFramebuffers(1, &fb);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glViewport(0, 0, Engine::width(), Engine::height());
+    glViewport(0, 0, Engine::input().width, Engine::input().height);
     return true;
 }

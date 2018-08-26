@@ -53,8 +53,9 @@ void Debug(std::string s)  { Log(Line::Debug,  std::move(s)); }
 void Trace(std::string s)  { Log(Line::Trace,  std::move(s)); }
 
 void draw_widget() {
-    ImGui::SetNextWindowPos(ImVec2((float)Engine::width() / 2, (float)Engine::height() - 150.f), ImGuiCond_FirstUseEver, ImVec2(0.5, 0.5f));
-    ImGui::SetNextWindowSize(ImVec2((float)Engine::width() * 3.f / 4.f, 250), ImGuiCond_FirstUseEver);
+    auto& in = Engine::input();
+    ImGui::SetNextWindowPos(ImVec2((float)in.width / 2, (float)in.height - 150.f), ImGuiCond_FirstUseEver, ImVec2(0.5, 0.5f));
+    ImGui::SetNextWindowSize(ImVec2((float)in.width * 3.f / 4.f, 250), ImGuiCond_FirstUseEver);
     ImGui::Begin("Log window");
     if (ImGui::Button("Clear")) {
         m_log.clear();

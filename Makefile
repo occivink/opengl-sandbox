@@ -12,7 +12,7 @@ else
     endif
 endif
 
-sources := main.cpp engine.cpp cube.cpp textured_quad.cpp log.cpp shader_functions.cpp imgui_opengles_impl.cpp imgui.cpp imgui_demo.cpp imgui_draw.cpp
+sources := main.cpp engine.cpp volume.cpp manipulator.cpp cube.cpp textured_quad.cpp log.cpp shader_functions.cpp imgui_opengles_impl.cpp imgui.cpp imgui_demo.cpp imgui_draw.cpp
 objects := $(addprefix ., $(sources:.cpp=$(suffix).o))
 deps := $(addprefix ., $(sources:.cpp=$(suffix).d))
 
@@ -21,7 +21,7 @@ CPPFLAGS +=
 LDFLAGS += -s FULL_ES3=1 --shell-file shell_minimal.html
 
 CXX = em++
-CXXFLAGS += -pedantic -std=c++17 -g -Wall -Wno-reorder -Wno-sign-compare -Wno-address -I /usr/include/glm -s USE_WEBGL2=1 -s FETCH=1 -s WASM=0 -s ALLOW_MEMORY_GROWTH=1 -s EXPORTED_FUNCTIONS='["_main", "_loadImageFile"]' -s EXTRA_EXPORTED_RUNTIME_METHODS='["ccall", "cwrap"]'
+CXXFLAGS += -pedantic -std=c++17 -g -Wall -Wno-reorder -Wno-sign-compare -Wno-address -I /usr/include/glm -s USE_WEBGL2=1 -s FETCH=0 -s WASM=1 -s ALLOW_MEMORY_GROWTH=1 -s EXPORTED_FUNCTIONS='["_main", "_loadImageFile"]' -s EXTRA_EXPORTED_RUNTIME_METHODS='["ccall", "cwrap"]'
 
 
 all : proj

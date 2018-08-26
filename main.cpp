@@ -3,11 +3,13 @@
 #include "textured_quad.hpp"
 #include "scancodes.hpp"
 #include "camera.hpp"
+#include "volume.hpp"
+#include "manipulator.hpp"
+#include "utils.hpp"
 #include "log.hpp"
 
 #include "imgui/imgui.h"
 #include "emscripten.h"
-#include "emscripten/fetch.h"
 
 #include <fcntl.h>
 #include <sys/types.h>
@@ -32,12 +34,16 @@
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #define STBI_WRITE_NO_STDIO
+
 #include "stb_image_write.h"
 
 using namespace std::string_literals;
 
 namespace {
-    Camera cam;
+    bool ortho = false;
+    Camera perspective_cam;
+    Camera ortho_cam;
+    auto current_cam = &perspective_cam;
 
     bool log_window = true;
 
@@ -48,12 +54,15 @@ namespace {
 
     const std::vector<const char*> label_sizes = { "128", "256", "512", "1024", "2048", "4096" };
     int label_width = 0;  // just an index, the real value is (128 * (1 << index))
-    int label_height = 0; // just an index, the real value is (128 * (1 << index))
+    int label_height = 0; // same
 
     std::optional<glm::vec2> previous_paint_location;
 
-    std::unique_ptr<TexturedQuad> quad;
+    std::unique_ptr<Manipulator> manip;
+    std::unique_ptr<Cube> cube;
+    std::unique_ptr<Volume> volume;
     std::unique_ptr<TexturedQuad> labels;
+    std::unique_ptr<TexturedQuad> quad;
 
     std::vector<unsigned char> current_image_data;
 
@@ -64,25 +73,6 @@ namespace {
     float distance = 2.f;
 }
 
-
-template<typename T>
-class OnScopeEnd
-{
-public:
-    [[gnu::always_inline]]
-    OnScopeEnd(T func) : m_func(std::move(func)) {}
-
-    [[gnu::always_inline]]
-    ~OnScopeEnd() { m_func(); }
-private:
-    T m_func;
-};
-
-template<typename T>
-OnScopeEnd<T> on_scope_end(T t)
-{
-    return OnScopeEnd<T>{std::move(t)};
-}
 
 void stbi_write_callback(void *context, void *data, int size) {
     auto& png = *reinterpret_cast<std::vector<unsigned char>*>(context);
@@ -112,89 +102,6 @@ bool loadImageToQuad(const unsigned char* image_data, int size)
     return true;
 }
 
-void fetchImageSuccess(emscripten_fetch_t *fetch)
-{
-    auto c = on_scope_end([&]{ emscripten_fetch_close(fetch); });
-    if (fetch->numBytes == 0) {
-        Log::Error("expected data, but received none");
-        return;
-    }
-    Log::Info("trying to load received data (" + std::to_string(fetch->numBytes/1000) + "kb) as image");
-    if (loadImageToQuad(reinterpret_cast<const unsigned char*>(fetch->data), fetch->numBytes)) {
-        current_image_data.resize(fetch->numBytes);
-        std::memcpy(current_image_data.data(), fetch->data, current_image_data.size());
-    }
-}
-
-void getProcessingResultSuccess(emscripten_fetch_t *fetch)
-{
-    auto c = on_scope_end([&]{ emscripten_fetch_close(fetch); });
-    if (fetch->numBytes == 0) {
-        Log::Error("expected data, but received none");
-        return;
-    }
-    Log::Info("trying to load received data (" + std::to_string(fetch->numBytes/1000) + "kb) as image");
-    if (loadImageToQuad(reinterpret_cast<const unsigned char*>(fetch->data), fetch->numBytes)) {
-        current_image_data.resize(fetch->numBytes);
-        std::memcpy(current_image_data.data(), fetch->data, current_image_data.size());
-        resetLabels();
-    }
-}
-
-void genericSuccess(emscripten_fetch_t *fetch)
-{
-    Log::Info("api call succeeded");
-    emscripten_fetch_close(fetch);
-}
-
-void genericFail(emscripten_fetch_t *fetch)
-{
-    Log::Error("api call failed");
-    emscripten_fetch_close(fetch);
-}
-
-void sendSerializedImage(const char* apiPath, const std::vector<unsigned char>& png_data)
-{
-    Log::Info("sending image to "s + apiPath);
-    emscripten_fetch_attr_t attr;
-    emscripten_fetch_attr_init(&attr);
-    strcpy(attr.requestMethod, "POST");
-    attr.attributes = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY;
-    attr.onsuccess = genericSuccess;
-    attr.onerror = genericFail;
-    int n = png_data.size();
-    auto tmp = new char[n];
-    std::memcpy(tmp, png_data.data(), n);
-    attr.requestDataSize = n;
-    attr.requestData = tmp;
-    auto s = "api/"s + apiPath;
-    emscripten_fetch(&attr, s.c_str());
-}
-
-void getProcessingResult()
-{
-    Log::Info("waiting for processing result");
-    emscripten_fetch_attr_t attr;
-    emscripten_fetch_attr_init(&attr);
-    strcpy(attr.requestMethod, "GET");
-    attr.attributes = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY;
-    attr.onsuccess = getProcessingResultSuccess;
-    attr.onerror = genericFail;
-    emscripten_fetch(&attr, "api/ProcessImages");
-}
-
-void fetchRandomImage()
-{
-    Log::Info("fetching random image");
-    emscripten_fetch_attr_t attr;
-    emscripten_fetch_attr_init(&attr);
-    strcpy(attr.requestMethod, "GET");
-    attr.attributes = EMSCRIPTEN_FETCH_LOAD_TO_MEMORY;
-    attr.onsuccess = fetchImageSuccess;
-    attr.onerror = genericFail;
-    emscripten_fetch(&attr, "api/RandomImage");
-}
-
 extern "C" { // necessary to export to js
     void loadImageFile() {
         auto fd = open("/file.txt", O_RDONLY);
@@ -222,6 +129,9 @@ extern "C" { // necessary to export to js
         auto c = on_scope_end([&]{ munmap((void*)data, st.st_size); });
         int n = st.st_size;
         if (loadImageToQuad(data, n)) {
+            cube.reset();
+            volume.reset();
+            manip.reset();
             current_image_data.resize(n);
             memcpy(current_image_data.data(), data, n);
         }
@@ -234,71 +144,59 @@ void refreshCamera() {
         distance * cos(phi),
         distance * sin(phi) * cos(theta),
     };
-    auto right = glm::cross(-pos, glm::vec3(0,1,0));
-    cam.look_at(
+    auto z_axis = glm::normalize(pos - glm::vec3(0));
+    auto x_axis = -glm::normalize(glm::cross(z_axis, glm::vec3(0,1,0)));
+    current_cam->look_at(
         pos,
         glm::vec3(0, 0, 0),
-        glm::cross(right, -pos)
+        glm::cross(z_axis, x_axis)
     );
-    cam.set_perspective(70.0f, (float)Engine::width() / (float)Engine::height(), 0.1f, 100.0f);
+    auto& in = Engine::input();
+    perspective_cam.set_perspective(70.0f, (float)in.width / (float)in.height, 0.1f, 100.0f);
+    ortho_cam.set_ortho(in.width, in.height, 0.1f, 100.0f);
 }
 
 void loop_func()
 {
-    auto& m_io = ImGui::GetIO();
-    bool paint = false;
-    bool rotate_camera = false;
-    bool zoom_camera = false;
-    if (!m_io.WantCaptureMouse) {
-        if (m_io.MouseDown[0]) {
-            if (painting_mode)
-                paint = true;
-            else
-                rotate_camera = (m_io.MouseDelta.x != 0.f or m_io.MouseDelta.y != 0.f);
+    auto& io = ImGui::GetIO();
+    auto& in = Engine::input();
+    bool camera_changed = false;
+    bool mouse_down = io.MouseDown[0];
+    bool mouse_captured = io.WantCaptureMouse;
+    auto clear_paint = on_scope_end([&]{ previous_paint_location.reset(); });
+    mouse_captured = mouse_captured or manip->handleInput(current_cam->projection_view(), in);
+    if (mouse_down and not mouse_captured) {
+        if (in.mouseDelta.x != 0 or in.mouseDelta.y != 0) {
+            auto& delta = io.MouseDelta;
+            theta -= delta.x / 500.f;
+            phi -= delta.y / 500.f;
+            if (phi < 0.001)
+                phi = 0.001;
+            if (phi > PI - 0.001)
+                phi = PI - 0.001;
+            camera_changed = true;
         }
-        zoom_camera = m_io.MouseWheel != 0.f;
     }
-    if (rotate_camera) {
-        auto& delta = m_io.MouseDelta;
-        theta -= delta.x / 500.f;
-        phi -= delta.y / 500.f;
-        if (phi < 0.001)
-            phi = 0.001;
-        if (phi > PI - 0.001)
-            phi = PI - 0.001;
-    }
-    if (zoom_camera) {
-        distance += m_io.MouseWheel * -0.1f;
+    if (not mouse_captured && in.mouseWheel != 0) {
+        distance += in.mouseWheel * -0.2f;
         distance = std::max(0.01f, distance);
+        camera_changed = true;
     }
-    if (rotate_camera or zoom_camera) {
+    if (camera_changed or in.sizeChanged) {
         Log::Trace("refreshing camera");
         refreshCamera();
     }
-    if (painting_mode) {
-        if (paint and quad and labels) {
-            glm::vec2 cursor = {
-                2.0f * m_io.MousePos[0] / (float)Engine::width() - 1.0f,
-                1.0f - 2.0f * m_io.MousePos[1] / (float)Engine::height(),
-            };
-            glm::vec2 outPicked;
-            if (quad->unproject(cam, nullptr, cursor, outPicked)) {
-                float radius_adjusted = label_radius * labels->height() / quad->height();
-                if (previous_paint_location)
-                    labels->paint(outPicked, *previous_paint_location, label_color, radius_adjusted, quad->ratio());
-                else
-                    labels->paint(outPicked, outPicked, label_color, radius_adjusted, quad->ratio());
-                previous_paint_location = outPicked;
-            }
-        } else {
-            previous_paint_location.reset();
-        }
-    }
 
-    if (quad and labels)
-        quad->renderWithLabels(cam, *labels, label_opacity);
+    if (manip)
+        manip->render(current_cam->projection_view());
+    else if (volume)
+        volume->render(current_cam->projection_view());
+    else if (cube)
+        cube->render(current_cam->projection_view(), glm::vec3(1,1,1));
+    else if (quad and labels)
+        quad->renderWithLabels(*current_cam, *labels, label_opacity);
     else if (quad)
-        quad->render(cam);
+        quad->render(*current_cam);
 
     if (!Engine::show_gui())
         return;
@@ -313,13 +211,34 @@ void loop_func()
         Engine::setOpenHovered(ImGui::IsItemHovered());
         ImGui::Checkbox("Paint", &painting_mode);
 
-        if (ImGui::Button("Request random image")) {
+        if (ImGui::Button("Manip")) {
+            if (manip)
+                manip->set_mode(manip->mode() == Manipulator::Rotation ? Manipulator::Translation : Manipulator::Rotation);
+            else
+                manip.reset(new Manipulator);
+        }
+        if (ImGui::Button("Cube")) {
+            current_cam = &perspective_cam;
+            cube.reset(new Cube);
+            volume.reset();
+            quad.reset();
+            manip.reset();
+        }
+        if (ImGui::Button("Volume")) {
+            current_cam = &perspective_cam;
+            manip.reset();
+            cube.reset();
+            quad.reset();
+            volume.reset(new Volume({64,64,64}, 4));
+        }
+
+        /*if (ImGui::Button("Request random image")) {
             fetchRandomImage();
         }
         if (ImGui::Button("Send Image") && quad) {
             sendSerializedImage("SendCurrentImage", current_image_data);
         }
-        if (ImGui::Button("Send Labels") && labels) {
+        if  (ImGui::Button("Send Labels") && labels) {
             std::vector<unsigned char> pixels;
             if (labels->exportPixels(pixels)) {
                 int culled_size = pixels.size() / 3;
@@ -335,7 +254,7 @@ void loop_func()
         }
         if (ImGui::Button("Process")) {
             getProcessingResult();
-        }
+        }*/
 
         ImGui::Checkbox("Log window", &log_window);
         ImGui::Text("%.2f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
@@ -383,7 +302,8 @@ void loop_func()
 
 int main(int argc, char** argv)
 {
-    fetchRandomImage();
+    stbi_set_flip_vertically_on_load(true);
+    //fetchRandomImage();
     Engine::init(loop_func);
     resetLabels();
     refreshCamera();

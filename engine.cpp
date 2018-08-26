@@ -1,4 +1,5 @@
 #include "engine.hpp"
+#include "input.hpp"
 #include "log.hpp"
 #include "scancodes.hpp"
 
@@ -25,6 +26,9 @@ namespace {
     double m_elapsed_time = 1/60.f;
     bool m_visible = true;
 
+    Input m_prev_input;
+    Input m_input;
+
     bool m_released_touch = false;
     bool m_openHovered = false;
 
@@ -36,13 +40,13 @@ namespace {
             Log::Trace("focus in");
         }
         for (int i = 0; i < 512; ++i)
-            m_io->KeysDown[i] = false;
+            m_input.keyDown[i] = m_io->KeysDown[i] = false;
         for (int i = 0; i < 5; ++i)
-            m_io->MouseDown[i] = false;
+            m_input.mouseDown[i] = m_io->MouseDown[i] = false;
         m_io->MousePos = { -FLT_MAX, -FLT_MAX };
-        m_io->KeyShift = false;
-        m_io->KeyCtrl =  false;
-        m_io->KeyAlt =   false;
+        m_input.keyShift = m_io->KeyShift = false;
+        m_input.keyCtrl  = m_io->KeyCtrl  = false;
+        m_input.keyAlt   = m_io->KeyAlt   = false;
         m_io->KeySuper = false;
 
         return false;
@@ -50,6 +54,8 @@ namespace {
 
     EM_BOOL canvasSizeCallback(int eventType, const void* reserved, void* userData) {
         emscripten_get_canvas_element_size("#canvas", &m_width, &m_height);
+        m_input.width = m_width;
+        m_input.height = m_height;
         m_io->DisplaySize = ImVec2((float)m_width, (float)m_height);
         m_io->DisplayFramebufferScale = ImVec2(1, 1);
         return true;
@@ -62,11 +68,6 @@ namespace {
         if (scancode == ScanCode::S_UNKNOWN)
             return false;
 
-        if (eventType == EMSCRIPTEN_EVENT_KEYDOWN)
-            Log::Trace("key down");
-        else
-            Log::Trace("key up");
-
         // hack: browsers only allow an input of type file to be triggered in user event callbacks
         if (keyEvent->ctrlKey and scancode == ScanCode::S_O and eventType == EMSCRIPTEN_EVENT_KEYDOWN) {
             m_io->KeyCtrl =  false;
@@ -77,10 +78,10 @@ namespace {
 
 
         IM_ASSERT(scancode >= 0 and scancode < IM_ARRAYSIZE(m_io->KeysDown));
-        m_io->KeysDown[scancode] = (eventType == EMSCRIPTEN_EVENT_KEYDOWN);
-        m_io->KeyShift = keyEvent->shiftKey;
-        m_io->KeyCtrl =  keyEvent->ctrlKey;
-        m_io->KeyAlt =   keyEvent->altKey;
+        m_input.keyDown[scancode] = m_io->KeysDown[scancode] = (eventType == EMSCRIPTEN_EVENT_KEYDOWN);
+        m_input.keyShift = m_io->KeyShift = keyEvent->shiftKey;
+        m_input.keyCtrl  = m_io->KeyCtrl =  keyEvent->ctrlKey;
+        m_input.keyAlt   = m_io->KeyAlt =   keyEvent->altKey;
         m_io->KeySuper = keyEvent->metaKey;
 
         return true;
@@ -109,7 +110,6 @@ namespace {
             text[4] = '\0';
         } else
             return false;
-        Log::Trace("input text");
         m_io->AddInputCharactersUTF8(text);
         return false;
     }
@@ -117,7 +117,8 @@ namespace {
     EM_BOOL touchMoveCallback(int eventType, const EmscriptenTouchEvent *touchEvent, void *userData) {
         if (touchEvent->numTouches == 0)
             return true;
-        m_io->MousePos = { (float)touchEvent->touches[0].canvasX, (float)touchEvent->touches[0].canvasY };
+        m_input.mousePos = { touchEvent->touches[0].canvasX, touchEvent->touches[0].canvasY };
+        m_io->MousePos = { (float)m_input.mousePos.x, (float)m_input.mousePos.y };
         return true;
     }
     EM_BOOL touchStartEndCallback(int eventType, const EmscriptenTouchEvent *touchEvent, void *userData) {
@@ -129,8 +130,9 @@ namespace {
             // we don't get the corresponding mouse up so might as well abort
             return false;
         }
-        m_io->MouseDown[0] = (eventType == EMSCRIPTEN_EVENT_TOUCHSTART);
-        m_io->MousePos = { (float)touchEvent->touches[0].canvasX, (float)touchEvent->touches[0].canvasY };
+        m_input.mouseDown[0] = m_io->MouseDown[0] = (eventType == EMSCRIPTEN_EVENT_TOUCHSTART);
+        m_input.mousePos = { touchEvent->touches[0].canvasX, touchEvent->touches[0].canvasY };
+        m_io->MousePos = { (float)m_input.mousePos.x, (float)m_input.mousePos.y };
         if (eventType != EMSCRIPTEN_EVENT_TOUCHSTART)
             m_released_touch = true;
         return true;
@@ -138,7 +140,8 @@ namespace {
 
 
     EM_BOOL mouseMoveCallback(int eventType, const EmscriptenMouseEvent *mouseEvent, void *userData) {
-        m_io->MousePos = { (float)mouseEvent->canvasX, (float)mouseEvent->canvasY };
+        m_input.mousePos = { mouseEvent->canvasX, mouseEvent->canvasY };
+        m_io->MousePos = { (float)m_input.mousePos.x, (float)m_input.mousePos.y };
         return true;
     }
     EM_BOOL mouseClickCallback(int eventType, const EmscriptenMouseEvent *mouseEvent, void *userData) {
@@ -149,19 +152,21 @@ namespace {
             return false;
         }
 
-        m_io->MouseDown[mouseEvent->button] = (eventType == EMSCRIPTEN_EVENT_MOUSEDOWN);
-        m_io->KeyShift = mouseEvent->shiftKey;
-        m_io->KeyCtrl  = mouseEvent->ctrlKey;
-        m_io->KeyAlt   = mouseEvent->altKey;
+		int i = mouseEvent->button;
+        m_input.mouseDown[i] = m_io->MouseDown[i] = (eventType == EMSCRIPTEN_EVENT_MOUSEDOWN);
+        m_input.keyShift = m_io->KeyShift = mouseEvent->shiftKey;
+        m_input.keyCtrl  = m_io->KeyCtrl =  mouseEvent->ctrlKey;
+        m_input.keyAlt   = m_io->KeyAlt =   mouseEvent->altKey;
         m_io->KeySuper = mouseEvent->metaKey;
-        m_io->MousePos = { (float)mouseEvent->canvasX, (float)mouseEvent->canvasY };
+        m_input.mousePos = { mouseEvent->canvasX, mouseEvent->canvasY };
+        m_io->MousePos = { (float)m_input.mousePos.x, (float)m_input.mousePos.y };
         return true;
     }
     EM_BOOL mouseWheelCallback(int eventType, const EmscriptenWheelEvent *mouseEvent, void *userData) {
-        if (mouseEvent->deltaX < 0) m_io->MouseWheelH += 1;
-        if (mouseEvent->deltaX > 0) m_io->MouseWheelH -= 1;
-        if (mouseEvent->deltaY < 0) m_io->MouseWheel += 1;
-        if (mouseEvent->deltaY > 0) m_io->MouseWheel -= 1;
+        if (mouseEvent->deltaY < 0) { m_io->MouseWheel += 1; m_input.mouseWheel++; }
+        if (mouseEvent->deltaY > 0) { m_io->MouseWheel -= 1; m_input.mouseWheel--; }
+        if (mouseEvent->deltaX < 0) { m_io->MouseWheelH += 1; }
+        if (mouseEvent->deltaX > 0) { m_io->MouseWheelH -= 1; }
         return true;
     }
 
@@ -188,6 +193,7 @@ namespace {
         double current_time = emscripten_get_now() / 1000;
         m_elapsed_time = current_time - m_last_time;
         m_io->DeltaTime = m_elapsed_time;
+        m_input.setChangedFlags(m_prev_input);
 
         if (m_show_gui) {
             ImGui_ImplOpenGL3_NewFrame();
@@ -213,6 +219,8 @@ namespace {
             m_released_touch = false;
         }
         m_last_time = current_time;
+        m_prev_input = m_input;
+        m_input.mouseWheel = 0;
     }
 }
 
@@ -350,12 +358,8 @@ double elapsed_time(){
     return m_elapsed_time;
 }
 
-int width(){
-    return m_width;
-}
-
-int height(){
-    return m_height;
+Input& input(){
+    return m_input;
 }
 
 void setOpenHovered(bool v) {
