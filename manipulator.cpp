@@ -197,11 +197,16 @@ bool Manipulator::handleInput(const mat4& mvp, Input& in) {
     vec4 dir = normalize(far - close);
     vec4 center = vec4(0,0,0,1);
 
-    auto log_vec = [](std::string what, glm::vec4 v) { Log::Error(what + " " + std::to_string(v.x) + " " + std::to_string(v.y) + " " + std::to_string(v.z) + " " + std::to_string(v.w)); };
-
     if (state == Continue) {
         if (m_mode == Translation) {
-            m_model = rotate(m_model, 0.05f, vec3(m_old_state->axis));
+            const auto& axis = m_old_state->axis;
+            float d = dot(dir, axis);
+            if (std::abs(d) > std::numeric_limits<float>::epsilon())
+            {
+                float t = (dot(dir, axis) * dot(dir, center-close) - dot(axis, center-close) * dot(dir,dir)) / (dot(dir,dir) * dot(axis,axis) - d * d);
+                vec4 new_pos = center + t * axis;
+                m_model = translate(m_old_state->model, vec3(new_pos - m_old_state->start_point));
+            }
         } else if (m_mode == Rotation) {
             const auto& plane_normal = m_old_state->axis;
             float d = dot(dir, plane_normal);
