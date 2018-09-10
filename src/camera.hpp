@@ -1,9 +1,9 @@
 #pragma once
 
 #include "input.hpp"
-#include <mat4x4.hpp>
-#include <gtc/quaternion.hpp>
-#include <gtc/matrix_transform.hpp>
+#include <glm/mat4x4.hpp>
+#include <glm/gtc/quaternion.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include <variant>
 #include <vector>
 #include <queue>

@@ -1,6 +1,6 @@
 #include "fetch.hpp"
 
-#include <esmcripten/fetch.h>
+//#include <esmcripten/fetch.h>
 
 /*void fetchImageSuccess(emscripten_fetch_t *fetch)
 {

@@ -36,9 +36,7 @@ Volume::Volume(const unsigned char* data, glm::ivec3 size, int c)
             }
         }
     }
-
     glTexImage3D(GL_TEXTURE_3D, 0, format, size.x, size.y, size.z, 0, format, GL_UNSIGNED_BYTE, other_data);
-
     delete[] other_data;
 
     glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);

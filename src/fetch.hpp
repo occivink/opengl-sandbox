@@ -2,7 +2,7 @@
 
 #include <vector>
 
-struct emscripten_fetch_t;
+//struct emscripten_fetch_t;
 
 /*
 namespace Fetch {

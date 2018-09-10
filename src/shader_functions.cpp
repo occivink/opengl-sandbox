@@ -1,5 +1,6 @@
 #include "shader_functions.hpp"
 #include "log.hpp"
+#include <GLES3/gl3.h>
 
 GLuint load_shader(GLenum type, const char *shaderSrc)
 {

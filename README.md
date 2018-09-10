@@ -1,13 +1,20 @@
-Deps:
+# How to build
 
-emscripten (em++)
-glm
-imgui (included)
+Get emscripten, and have em++ available in your PATH
+```
+git submodule update --init
+make
+```
 
-Launch nginx:
-sudo nginx -g 'daemon off;' -c "$PWD/nginx.conf"
+# How to run
 
-TODO:
+```
+sudo nginx -g 'daemon off;' -p . -c nginx.conf
+```
+
+Access localhost from your webbrowser, and wala.
+
+# TODO
 
 - more features
 - refactor build system mess

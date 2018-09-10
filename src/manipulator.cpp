@@ -3,8 +3,8 @@
 #include "utils.hpp"
 #include "log.hpp"
 
-#include <vec3.hpp>
-#include <gtc/matrix_transform.hpp>
+#include <glm/vec3.hpp>
+#include <glm/gtc/matrix_transform.hpp>
 #include <vector>
 
 #define PI 3.1415

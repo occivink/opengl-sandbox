@@ -1,45 +1,65 @@
-debug ?= yes
+# output binary
+BIN := build/nat
+OUTWEB := build/webgl.html
 
-ifeq ($(debug),yes)
-    CPPFLAGS += -DPROJ_DEBUG
-    suffix := .debug
-else
-    ifeq ($(debug),no)
-        CXXFLAGS += -O3
-        suffix := .opt
-    else
-        $(error debug should be either yes or no)
-    endif
-endif
+# source files
+SHELL_FILE := shell_minimal.html
 
-sources := main.cpp camera.cpp engine.cpp volume.cpp manipulator.cpp cube.cpp textured_quad.cpp log.cpp shader_functions.cpp imgui_opengles_impl.cpp imgui.cpp imgui_demo.cpp imgui_draw.cpp
-objects := $(addprefix ., $(sources:.cpp=$(suffix).o))
-deps := $(addprefix ., $(sources:.cpp=$(suffix).d))
+SRCS := $(wildcard src/*.cpp)
+SRCS += src/imgui/imgui.cpp src/imgui/imgui_demo.cpp src/imgui/imgui_draw.cpp src/imgui/imgui_widgets.cpp
 
-LIBS += 
-CPPFLAGS +=
-LDFLAGS += -s FULL_ES3=1 --shell-file shell_minimal.html
+# intermediate directory for generated object files
+OBJDIR := build/obj
+# intermediate directory for generated dependency files
+DEPDIR := build/deps
 
-CXX = em++
-CXXFLAGS += -pedantic -std=c++17 -g -Wall -Wno-reorder -Wno-sign-compare -Wno-address -I /usr/include/glm -s USE_WEBGL2=1 -s FETCH=0 -s WASM=1 -s ALLOW_MEMORY_GROWTH=1 -s EXPORTED_FUNCTIONS='["_main", "_loadImageFile"]' -s EXTRA_EXPORTED_RUNTIME_METHODS='["ccall", "cwrap"]'
+# object files, auto generated from source files
+OBJS := $(patsubst %,$(OBJDIR)/%.o,$(basename $(SRCS)))
+# dependency files, auto generated from source files
+DEPS := $(patsubst %,$(DEPDIR)/%.d,$(basename $(SRCS)))
 
+# compilers (at least gcc and clang) don't create the subdirectories automatically
+$(shell mkdir -p $(dir $(OBJS)) >/dev/null)
+$(shell mkdir -p $(dir $(DEPS)) >/dev/null)
 
-all : proj
+# C++ compiler
+CXX := em++
+# linker
+LD := em++
 
-proj : $(objects)
-	$(CXX) $(LDFLAGS) $(CXXFLAGS) $(objects) $(LIBS) -o proj.html
+# C++ flags
+CXXFLAGS := -std=c++17 -g -Wall -Wextra -pedantic -Isrc/glm
+EMXXFLAGS := -s USE_WEBGL2=1 -s FETCH=0 -s WASM=1 -s ALLOW_MEMORY_GROWTH=1 -s EXPORTED_FUNCTIONS='["_main", "_loadImageFile"]' -s EXTRA_EXPORTED_RUNTIME_METHODS='["ccall", "cwrap"]'
+# linker flags
+LDFLAGS :=
+EMLDFLAGS := -s FULL_ES3=1 -s USE_WEBGL2=1 --shell-file $(SHELL_FILE)
+# flags required for dependency generation; passed to compilers
+DEPFLAGS = -MT $@ -MD -MP -MF $(DEPDIR)/$*.d
 
--include $(deps)
+# compile C++ source files
+COMPILE.cc = $(CXX) $(DEPFLAGS) $(CXXFLAGS) $(EMXXFLAGS) -c -o $@
+# link object files to binary
+LINK.o = $(LD) $(LDFLAGS) $(EMLDFLAGS) $(LDLIBS) -o $@
+# postcompile step
 
-.%$(suffix).o: %.cpp
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) -MD -MP -MF $(addprefix ., $(<:.cpp=$(suffix).d)) -c -o $@ $<
+all: $(OUTWEB)
 
-check: test
-test:
-	cd ../test && ./run
-
+.PHONY: clean
 clean:
-	rm -f .*.o .*.d
+	rm $(OUTWEB) -r build
 
-.PHONY: check clean
+.PHONY: help
+help:
+	@echo available targets: all clean
 
+$(OUTWEB): $(OBJS)
+	$(LINK.o) $^
+
+$(OBJDIR)/%.o: %.cpp
+$(OBJDIR)/%.o: %.cpp $(DEPDIR)/%.d
+	$(COMPILE.cc) $<
+
+.PRECIOUS = $(DEPDIR)/%.d
+$(DEPDIR)/%.d: ;
+
+-include $(DEPS)
