@@ -17,7 +17,7 @@ public:
 
     void render(glm::mat4 mvp) const;
 
-    bool handleInput(const glm::mat4& mv,
+    bool handle_input(const glm::mat4& mv,
                      Input& input);
 
     Mode mode() const { return m_mode; }

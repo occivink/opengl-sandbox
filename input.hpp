@@ -3,6 +3,7 @@
 #include <mat4x4.hpp>
 #include <climits>
 #include <array>
+#include "scancodes.hpp"
 
 struct Input {
     Input()
@@ -31,6 +32,8 @@ struct Input {
 
     void setChangedFlags(const Input& previous)
     {
+        mouseCaptured = false;
+        keyboardCaptured = false;
         for (int i = 0; i < 512; ++i)
             keyStateChanged[i] = (keyDown[i] != previous.keyDown[i]);
         for (int i = 0; i < 5; ++i)

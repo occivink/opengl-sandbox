@@ -34,11 +34,6 @@ namespace {
 
     EM_BOOL focusInOutCallback(int eventType, const EmscriptenFocusEvent *focusEvent, void *userData)
     {
-        if (eventType == EMSCRIPTEN_EVENT_FOCUSOUT) {
-            Log::Trace("focus out");
-        } else {
-            Log::Trace("focus in");
-        }
         for (int i = 0; i < 512; ++i)
             m_input.keyDown[i] = m_io->KeysDown[i] = false;
         for (int i = 0; i < 5; ++i)
@@ -84,7 +79,7 @@ namespace {
         m_input.keyAlt   = m_io->KeyAlt =   keyEvent->altKey;
         m_io->KeySuper = keyEvent->metaKey;
 
-        return true;
+        return false;
     }
 
     EM_BOOL keyPressCallback(int eventType, const EmscriptenKeyboardEvent *keyEvent, void *userData) {
@@ -194,6 +189,8 @@ namespace {
         m_elapsed_time = current_time - m_last_time;
         m_io->DeltaTime = m_elapsed_time;
         m_input.setChangedFlags(m_prev_input);
+        m_input.mouseCaptured = m_io->WantCaptureMouse; 
+        m_input.keyboardCaptured = m_io->WantCaptureKeyboard;
 
         if (m_show_gui) {
             ImGui_ImplOpenGL3_NewFrame();

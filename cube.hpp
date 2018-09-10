@@ -9,9 +9,11 @@ class Cube {
 public:
     Cube();
 
-    void render(const glm::mat4& mvp, const glm::vec3& ratio) const;
+    void render(const Camera& cam, const glm::vec3& ratio) const;
 
-    void renderToTexture(const glm::mat4& mvp,
+    void render(const glm::mat4& mvp) const;
+
+    void renderToTexture(const Camera& cam,
                          const glm::vec3& ratio,
                          bool front,
                          TexturedQuad& quad) const;

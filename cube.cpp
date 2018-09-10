@@ -105,13 +105,14 @@ void main()
 }}
 
 
-void Cube::render(const glm::mat4& mvp, const glm::vec3& ratio) const
+void Cube::render(const Camera& cam, const glm::vec3& ratio) const
 {
     using namespace RgbShader;
     init();
 
     glUseProgram(program);
     glEnableVertexAttribArray(0);
+    auto& mvp = cam.projection_view();
     glUniformMatrix4fv(MvpID, 1, GL_FALSE, &mvp[0][0]);
     glUniform3fv(RatioID, 1, &ratio[0]);
     glBindBuffer(GL_ARRAY_BUFFER, Buffers::verticesBuffer);
@@ -120,7 +121,23 @@ void Cube::render(const glm::mat4& mvp, const glm::vec3& ratio) const
     glDrawArrays(GL_TRIANGLES, 0, Buffers::verticesCount);
 }
 
-void Cube::renderToTexture(const glm::mat4& mvp, const glm::vec3& ratio, bool front, TexturedQuad& quad) const
+void Cube::render(const glm::mat4& mvp) const
+{
+    using namespace RgbShader;
+    init();
+
+    glUseProgram(program);
+    glEnableVertexAttribArray(0);
+    glUniformMatrix4fv(MvpID, 1, GL_FALSE, &mvp[0][0]);
+    glm::vec3 ratio(1.f);
+    glUniform3fv(RatioID, 1, &ratio[0]);
+    glBindBuffer(GL_ARRAY_BUFFER, Buffers::verticesBuffer);
+    glVertexAttribPointer(0, 3, GL_FLOAT, 0, 0, 0);
+
+    glDrawArrays(GL_TRIANGLES, 0, Buffers::verticesCount);
+}
+
+void Cube::renderToTexture(const Camera& cam, const glm::vec3& ratio, bool front, TexturedQuad& quad) const
 {
     GLuint fb;
     glGenFramebuffers(1, &fb);
@@ -134,7 +151,7 @@ void Cube::renderToTexture(const glm::mat4& mvp, const glm::vec3& ratio, bool fr
         glCullFace(GL_BACK);
     else
         glCullFace(GL_FRONT);
-    render(mvp, ratio);
+    render(cam, ratio);
     glDisable(GL_CULL_FACE);
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);

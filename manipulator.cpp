@@ -167,19 +167,22 @@ Manipulator::Manipulator() {
     RotationBuffers::init();
 }
 
-bool Manipulator::handleInput(const mat4& mvp, Input& in) {
+bool Manipulator::handle_input(const mat4& mvp, Input& in) {
     if (m_mode == Inactive)
         return false;
 
     enum {
         Start,
         Continue,
-    } state;
+        End,
+    } state = End;
     if (in.mouseStateChanged[0] and in.mouseDown[0]) {
         state = Start;
     } else if (in.mouseDown[0] and m_old_state) {
         state = Continue;
-    } else {
+    }
+
+    if (state == End) {
         m_activeAxis = None;
         m_old_state.reset();
         return false;
@@ -198,6 +201,7 @@ bool Manipulator::handleInput(const mat4& mvp, Input& in) {
     vec4 center = vec4(0,0,0,1);
 
     if (state == Continue) {
+        in.mouseCaptured = true;
         if (m_mode == Translation) {
             const auto& axis = m_old_state->axis;
             float d = dot(dir, axis);
@@ -213,9 +217,10 @@ bool Manipulator::handleInput(const mat4& mvp, Input& in) {
             if (std::abs(d) > std::numeric_limits<float>::epsilon()) {
                 auto intersection = close + dot(center - close, plane_normal) / d * dir;
                 // something is fucked here
-                float angle = acos(dot(normalize(m_old_state->start_point - center), normalize(intersection - center))); 
+                float angle = acos(dot(normalize(m_old_state->start_point - center), normalize(intersection - center)));
                 if (angle > std::numeric_limits<float>::epsilon()) {
                     vec3 rotation_vec = cross(vec3(m_old_state->start_point), vec3(intersection));
+                    //Log::Error(rotation_vec);
                     m_model = rotate(m_old_state->model, angle, rotation_vec);
                 }
             }
@@ -229,6 +234,7 @@ bool Manipulator::handleInput(const mat4& mvp, Input& in) {
             return false;
 
         auto set_old_state = [&](vec4 v, vec4 axis) {
+            in.mouseCaptured = true;
             m_old_state.emplace();
             m_old_state->model = m_model;
             m_old_state->start_point = std::move(v);

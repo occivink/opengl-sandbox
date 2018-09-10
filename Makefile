@@ -12,7 +12,7 @@ else
     endif
 endif
 
-sources := main.cpp engine.cpp volume.cpp manipulator.cpp cube.cpp textured_quad.cpp log.cpp shader_functions.cpp imgui_opengles_impl.cpp imgui.cpp imgui_demo.cpp imgui_draw.cpp
+sources := main.cpp camera.cpp engine.cpp volume.cpp manipulator.cpp cube.cpp textured_quad.cpp log.cpp shader_functions.cpp imgui_opengles_impl.cpp imgui.cpp imgui_demo.cpp imgui_draw.cpp
 objects := $(addprefix ., $(sources:.cpp=$(suffix).o))
 deps := $(addprefix ., $(sources:.cpp=$(suffix).d))
 

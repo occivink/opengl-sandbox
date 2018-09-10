@@ -14,7 +14,7 @@ public:
     Volume(glm::ivec3 size, int c);
     ~Volume();
 
-    void render(const glm::mat4& mvp) const;
+    void render(const Camera& cam) const;
 
     const glm::ivec3& size() const { return m_size; }
     int channels() const { return m_channels; }
