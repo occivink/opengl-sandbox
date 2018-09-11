@@ -3,7 +3,7 @@ BIN := build/nat
 OUTWEB := build/webgl.html
 
 # source files
-SHELL_FILE := shell_minimal.html
+SHELL_FILE := src/platform/web/shell_minimal.html
 
 SRCS := $(wildcard src/*.cpp)
 SRCS += src/imgui/imgui.cpp src/imgui/imgui_demo.cpp src/imgui/imgui_draw.cpp src/imgui/imgui_widgets.cpp

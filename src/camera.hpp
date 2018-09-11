@@ -63,7 +63,7 @@ struct ScreenPartition {
         Layout layout;
         std::vector<std::variant<Container, Camera*>> children;
     };
-    int padding = 1;
+    int padding = 3;
     std::vector<Camera> all_cam;
     Viewport viewport;
     Container main;

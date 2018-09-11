@@ -284,6 +284,8 @@ void init(std::function<void()> func)
     m_io->KeyMap[ImGuiKey_Z] = ScanCode::S_Z;
 
     emscripten_get_canvas_element_size("#canvas", &m_width, &m_height);
+    //int dontcare;
+    //emscripten_get_canvas_size(&m_width, &m_height, &dontcare);
     m_io->DisplaySize = ImVec2((float)m_width, (float)m_height);
     m_io->DisplayFramebufferScale = ImVec2(1, 1);
 
@@ -362,5 +364,4 @@ Input& input(){
 void setOpenHovered(bool v) {
     m_openHovered = v;
 }
-
 }

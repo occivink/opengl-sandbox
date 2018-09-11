@@ -126,16 +126,16 @@ void Volume::render(const Camera& cam) const {
     using namespace VolumeShader;
     VolumeShader::init();
 
-    const auto& v = cam.viewport();
 
     Cube cube;
     // TODO cache the textures if the viewport hasn't changed?
+    const auto& v = cam.viewport();
     TexturedQuad front(v.width, v.height, 4);
     cube.renderToTexture(cam, m_ratio, true, front);
     TexturedQuad back(v.width, v.height, 4);
     cube.renderToTexture(cam, m_ratio, false, back);
 
-    glViewport(v.x, v.y, v.width, v.height);
+    //glViewport(v.x, v.y, v.width, v.height);
     glUseProgram(program);
 
     glActiveTexture(GL_TEXTURE0);

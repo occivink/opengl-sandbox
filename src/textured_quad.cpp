@@ -265,6 +265,7 @@ void TexturedQuad::paint(glm::vec2 from,
     glDrawArrays(GL_TRIANGLES, 0, 6);
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    // TODO restore
     glViewport(0, 0, Engine::input().width, Engine::input().height);
 }
 
@@ -381,6 +382,7 @@ bool TexturedQuad::exportPixels(std::vector<unsigned char>& pixels) const
 
     glDeleteFramebuffers(1, &fb);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    // TODO restore
     glViewport(0, 0, Engine::input().width, Engine::input().height);
     return true;
 }

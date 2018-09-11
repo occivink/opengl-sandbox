@@ -141,9 +141,9 @@ void loop_func()
     part.draw_delimiters();
 
     for (auto& cam : part.all_cam) {
-        const auto& v = cam.viewport();
         cam.handle_input(in);
 
+        const auto& v = cam.viewport();
         glViewport(v.x, v.y, v.width, v.height);
         for (auto& other_cam : part.all_cam)
             if (&cam != &other_cam)
@@ -270,7 +270,7 @@ int main(int argc, char** argv)
 
     Engine::init(loop_func);
 
-    part.horizontal();
+    part.single();
     for (auto& cam : part.all_cam)
         cam.set_position({0,0,5});
     resetLabels();

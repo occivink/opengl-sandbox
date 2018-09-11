@@ -145,7 +145,7 @@ void Cube::renderToTexture(const Camera& cam, const glm::vec3& ratio, bool front
 
     glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, quad.texture(), 0);
 
-    glViewport(0, 0, quad.width(), quad.height());
+    //glViewport(0, 0, quad.width(), quad.height());
     glEnable(GL_CULL_FACE);
     if (front)
         glCullFace(GL_BACK);

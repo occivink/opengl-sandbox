@@ -153,11 +153,11 @@ void ScreenPartition::grid() {
         HORIZONTAL,
         { Container{
             VERTICAL,
-            { }
+            { &all_cam[0], &all_cam[1] }
           },
           Container{
             VERTICAL,
-            {  }
+            { &all_cam[2], &all_cam[3] }
           },
         },
     };
@@ -193,25 +193,25 @@ void ScreenPartition::single() {
     process(main, viewport);
 }
 void ScreenPartition::set_viewport(Viewport v) {
-    v.x += 2*padding;
-    v.y += 2*padding;
-    v.width -= 4*padding;
-    v.height -= 4*padding;
+    v.x += padding;
+    v.y += padding;
+    v.width -= 2*padding;
+    v.height -= 2*padding;
     process(main, std::move(v));
 }
 void ScreenPartition::process(Container& c, Viewport v) {
     int leftover;
     auto s = c.children.size();
     if (c.layout == HORIZONTAL) {
-        v.width -= 2 * padding * (s - 1);
+        v.width -= padding * (s - 1);
         leftover = v.width % s;
         v.width /= s;
-        if (leftover) v.width++;
+        if (leftover > 0) v.width++;
     } else {
-        v.width -= 2 * padding * (s - 1);
+        v.height -= padding * (s - 1);
         leftover = v.height % s;
         v.height /= s;
-        if (leftover) v.height++;
+        if (leftover > 0) v.height++;
     }
     for (auto& child : c.children) {
         if (auto cont = std::get_if<Container>(&child)) {
@@ -219,14 +219,14 @@ void ScreenPartition::process(Container& c, Viewport v) {
         } else if (auto cam = std::get_if<Camera*>(&child)) {
             (*cam)->set_viewport(v);
         }
+        leftover--;
         if (c.layout == HORIZONTAL) {
-            v.x += v.width + padding * 2;
+            v.x += v.width + padding;
             if (leftover == 0) v.width--;
         } else {
-            v.y += v.height + padding * 2;
+            v.y += v.height + padding;
             if (leftover == 0) v.height--;
         }
-        leftover--;
     }
 }
 void ScreenPartition::draw_delimiters(){
