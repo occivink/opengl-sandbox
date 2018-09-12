@@ -51,8 +51,6 @@ namespace {
     int label_width = 0;  // just an index, the real value is (128 * (1 << index))
     int label_height = 0; // same
 
-    std::optional<glm::vec2> previous_paint_location;
-
     std::unique_ptr<Manipulator> manip;
     std::unique_ptr<Cube> cube;
     std::unique_ptr<Volume> volume;
@@ -230,7 +228,7 @@ void loop_func()
         ImGui::PushItemWidth(ImGui::GetWindowWidth() / 3.0f);
 
         if (ImGui::BeginCombo("x", label_sizes[label_width])) {
-            for (int i = 0; i < label_sizes.size(); i++) {
+            for (size_t i = 0; i < label_sizes.size(); i++) {
                 int val = 128 * (1 << i);
                 if (ImGui::Selectable(label_sizes[i], val == label_width))
                     label_width = i;
@@ -239,7 +237,7 @@ void loop_func()
         }
         ImGui::SameLine();
         if (ImGui::BeginCombo("size", label_sizes[label_height])) {
-            for (int i = 0; i < label_sizes.size(); i++) {
+            for (size_t i = 0; i < label_sizes.size(); i++) {
                 int val = 128 * (1 << i);
                 if (ImGui::Selectable(label_sizes[i], val == label_height))
                     label_height = i;
@@ -264,13 +262,13 @@ void loop_func()
     //ImGui::ShowDemoWindow();
 }
 
-int main(int argc, char** argv)
+int main()
 {
     stbi_set_flip_vertically_on_load(true);
 
     Engine::init(loop_func);
 
-    part.single();
+    part.horizontal();
     for (auto& cam : part.all_cam)
         cam.set_position({0,0,5});
     resetLabels();

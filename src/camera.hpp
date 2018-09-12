@@ -45,6 +45,7 @@ private:
     float m_far = 100.f;
 
     bool m_fps = true;
+    float m_distance = 5.f; // only in centered mode
 
     bool m_visible_to_others = true;
 
@@ -63,7 +64,7 @@ struct ScreenPartition {
         Layout layout;
         std::vector<std::variant<Container, Camera*>> children;
     };
-    int padding = 3;
+    int padding = 5;
     std::vector<Camera> all_cam;
     Viewport viewport;
     Container main;

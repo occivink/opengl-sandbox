@@ -45,30 +45,47 @@ void Camera::handle_input(Input& in) {
         }
     }*/
     if (in.mouseDown[0] and not in.mouseCaptured) {
-        if (in.mouseDelta.x != 0 or in.mouseDelta.y != 0) {
-            auto& delta = in.mouseDelta;
-            m_rot = normalize(
-                quat(1000, 0, -delta.x, 0)) *
+        auto& delta = in.mouseDelta;
+        if (delta.x != 0 or delta.y != 0) {
+            bool upside_down = (m_rot * vec3(0,1,0)).y < 0.f;
+            m_rot = normalize(quat(1000, 0, upside_down ? delta.x : -delta.x, 0)) *
                 m_rot *
                 normalize(quat(1000, -delta.y, 0, 0));
             m_dirty = true;
+            if (not m_fps)
+                m_pos = m_rot * vec3(0,0,m_distance);
         }
         in.mouseCaptured = true;
     }
-    if (m_fps and not in.keyboardCaptured) {
-        auto axis = vec3(0,0,0);
-        if (in.keyDown[ScanCode::S_W])
-            axis += vec3(0,0,-1);
-        if (in.keyDown[ScanCode::S_S])
-            axis += vec3(0,0,1);
-        if (in.keyDown[ScanCode::S_A])
-            axis += vec3(-1,0,0);
-        if (in.keyDown[ScanCode::S_D])
-            axis += vec3(1,0,0);
-        if (axis != vec3(0,0,0)) {
-            m_pos += 0.05f * (m_rot * normalize(axis));
-            m_dirty = true;
-            in.keyboardCaptured= true;
+    if (not in.keyboardCaptured) {
+        if (m_fps) {
+            auto axis = vec3(0,0,0);
+            if (in.keyDown[ScanCode::S_W])
+                axis += vec3(0,0,-1);
+            if (in.keyDown[ScanCode::S_S])
+                axis += vec3(0,0,1);
+            if (in.keyDown[ScanCode::S_A])
+                axis += vec3(-1,0,0);
+            if (in.keyDown[ScanCode::S_D])
+                axis += vec3(1,0,0);
+            if (axis != vec3(0,0,0)) {
+                m_pos += 0.05f * (m_rot * normalize(axis));
+                m_dirty = true;
+                in.keyboardCaptured= true;
+            }
+        } else { 
+            float inc = 0.f;
+            if (in.keyDown[ScanCode::S_W])
+                inc = -0.1;
+            if (in.keyDown[ScanCode::S_S])
+                inc = 0.1;
+            if (inc != 0.f) {
+                m_distance += inc;
+                m_distance = std::max(0.1f, m_distance);
+                m_pos = m_rot * vec3(0,0,m_distance);
+                m_dirty = true;
+                in.keyboardCaptured= true;
+            }
         }
     }
 }
